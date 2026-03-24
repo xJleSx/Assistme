@@ -1,0 +1,92 @@
+2026-03-04 19:56:54 | INFO     | __main__ | ============================================================
+2026-03-04 19:56:54 | INFO     | __main__ |   Electronics Comparison Platform — ETL Pipeline
+2026-03-04 19:56:54 | INFO     | __main__ | ============================================================
+2026-03-04 19:56:54 | INFO     | __main__ | 
+[Step 1] Creating database and tables...
+2026-03-04 19:56:54 | INFO     | config.db_config | Database 'electronics_db' already exists
+2026-03-04 19:56:54 | INFO     | config.db_config | All tables created successfully
+2026-03-04 19:56:54 | INFO     | __main__ |   Database and tables ready.
+2026-03-04 19:56:54 | INFO     | __main__ | 
+[Step 2] Found 4 Excel file(s):
+2026-03-04 19:56:54 | INFO     | __main__ |   - apple_2000_2026.xlsx
+2026-03-04 19:56:54 | INFO     | __main__ |   - oppo_2000_2026.xlsx
+2026-03-04 19:56:54 | INFO     | __main__ |   - samsung_2022_2026.xlsx
+2026-03-04 19:56:54 | INFO     | __main__ |   - xiaomi_2020_2026.xlsx
+2026-03-04 19:56:54 | INFO     | __main__ | 
+==================================================
+2026-03-04 19:56:54 | INFO     | __main__ | [Step 3] Processing: apple_2000_2026.xlsx
+2026-03-04 19:56:54 | INFO     | __main__ | ==================================================
+2026-03-04 19:56:54 | INFO     | __main__ |   Brand (from filename): Apple
+2026-03-04 19:56:54 | INFO     | pipeline.excel_loader | Loading Excel file: apple_2000_2026.xlsx
+2026-03-04 19:56:54 | INFO     | pipeline.excel_loader |   Loaded 143 products from apple_2000_2026.xlsx
+2026-03-04 19:56:54 | INFO     | __main__ |   Spec columns: 71
+2026-03-04 19:56:54 | DEBUG    | pipeline.spec_inserter |   Created category: tablet
+2026-03-04 19:56:54 | DEBUG    | pipeline.spec_inserter |   Created brand: Apple
+2026-03-04 19:56:54 | DEBUG    | pipeline.spec_inserter |   Created category: mobile
+2026-03-04 19:56:54 | DEBUG    | pipeline.spec_inserter |   Created category: watch
+2026-03-04 19:56:55 | INFO     | __main__ |   Products inserted: 143
+2026-03-04 19:56:55 | INFO     | __main__ |   Spec values inserted: 6521
+2026-03-04 19:56:55 | INFO     | __main__ | 
+  [Step 4] Extracting numeric specs and features...
+2026-03-04 19:56:55 | INFO     | __main__ |   Numeric specs extracted: 1348
+2026-03-04 19:56:55 | INFO     | __main__ |   Features extracted: 2475
+2026-03-04 19:56:55 | INFO     | __main__ | 
+==================================================
+2026-03-04 19:56:55 | INFO     | __main__ | [Step 3] Processing: oppo_2000_2026.xlsx
+2026-03-04 19:56:55 | INFO     | __main__ | ==================================================
+2026-03-04 19:56:55 | INFO     | __main__ |   Brand (from filename): Oppo
+2026-03-04 19:56:55 | INFO     | pipeline.excel_loader | Loading Excel file: oppo_2000_2026.xlsx
+2026-03-04 19:56:56 | INFO     | pipeline.excel_loader |   Loaded 387 products from oppo_2000_2026.xlsx
+2026-03-04 19:56:56 | INFO     | __main__ |   Spec columns: 72
+2026-03-04 19:56:56 | DEBUG    | pipeline.spec_inserter |   Created brand: Oppo
+2026-03-04 19:56:57 | INFO     | __main__ |   Products inserted: 387
+2026-03-04 19:56:57 | INFO     | __main__ |   Spec values inserted: 16505
+2026-03-04 19:56:57 | INFO     | __main__ | 
+  [Step 4] Extracting numeric specs and features...
+2026-03-04 19:56:59 | INFO     | __main__ |   Numeric specs extracted: 4345
+2026-03-04 19:56:59 | INFO     | __main__ |   Features extracted: 7462
+2026-03-04 19:56:59 | INFO     | __main__ | 
+==================================================
+2026-03-04 19:56:59 | INFO     | __main__ | [Step 3] Processing: samsung_2022_2026.xlsx
+2026-03-04 19:56:59 | INFO     | __main__ | ==================================================
+2026-03-04 19:56:59 | INFO     | __main__ |   Brand (from filename): Samsung
+2026-03-04 19:56:59 | INFO     | pipeline.excel_loader | Loading Excel file: samsung_2022_2026.xlsx
+2026-03-04 19:56:59 | INFO     | pipeline.excel_loader |   Loaded 140 products from samsung_2022_2026.xlsx
+2026-03-04 19:56:59 | INFO     | __main__ |   Spec columns: 65
+2026-03-04 19:56:59 | DEBUG    | pipeline.spec_inserter |   Created brand: Samsung
+2026-03-04 19:57:00 | INFO     | __main__ |   Products inserted: 140
+2026-03-04 19:57:00 | INFO     | __main__ |   Spec values inserted: 6451
+2026-03-04 19:57:00 | INFO     | __main__ | 
+  [Step 4] Extracting numeric specs and features...
+2026-03-04 19:57:00 | INFO     | __main__ |   Numeric specs extracted: 1622
+2026-03-04 19:57:00 | INFO     | __main__ |   Features extracted: 2772
+2026-03-04 19:57:00 | INFO     | __main__ | 
+==================================================
+2026-03-04 19:57:00 | INFO     | __main__ | [Step 3] Processing: xiaomi_2020_2026.xlsx
+2026-03-04 19:57:00 | INFO     | __main__ | ==================================================
+2026-03-04 19:57:00 | INFO     | __main__ |   Brand (from filename): Xiaomi
+2026-03-04 19:57:00 | INFO     | pipeline.excel_loader | Loading Excel file: xiaomi_2020_2026.xlsx
+2026-03-04 19:57:00 | INFO     | pipeline.excel_loader |   Loaded 367 products from xiaomi_2020_2026.xlsx
+2026-03-04 19:57:00 | INFO     | __main__ |   Spec columns: 73
+2026-03-04 19:57:00 | DEBUG    | pipeline.spec_inserter |   Created brand: Xiaomi
+2026-03-04 19:57:02 | INFO     | __main__ |   Products inserted: 367
+2026-03-04 19:57:02 | INFO     | __main__ |   Spec values inserted: 16757
+2026-03-04 19:57:02 | INFO     | __main__ | 
+  [Step 4] Extracting numeric specs and features...
+2026-03-04 19:57:04 | INFO     | __main__ |   Numeric specs extracted: 4154
+2026-03-04 19:57:04 | INFO     | __main__ |   Features extracted: 7090
+2026-03-04 19:57:04 | INFO     | __main__ | 
+[Step 5] Inserting use-case weight profiles...
+2026-03-04 19:57:04 | INFO     | pipeline.use_case_weights | Inserted 28 use-case weight entries across 5 profiles
+2026-03-04 19:57:04 | INFO     | __main__ | 
+============================================================
+2026-03-04 19:57:04 | INFO     | __main__ |   PIPELINE COMPLETE
+2026-03-04 19:57:04 | INFO     | __main__ | ============================================================
+2026-03-04 19:57:04 | INFO     | __main__ |   Files processed:     4
+2026-03-04 19:57:04 | INFO     | __main__ |   Total products:      1037
+2026-03-04 19:57:04 | INFO     | __main__ |   Total spec values:   46234
+2026-03-04 19:57:04 | INFO     | __main__ |   Total numeric specs: 11469
+2026-03-04 19:57:04 | INFO     | __main__ |   Total features:      19799
+2026-03-04 19:57:04 | INFO     | __main__ |   Errors:              0
+2026-03-04 19:57:04 | INFO     | __main__ |   Time elapsed:        9.75s
+2026-03-04 19:57:04 | INFO     | __main__ | ============================================================
