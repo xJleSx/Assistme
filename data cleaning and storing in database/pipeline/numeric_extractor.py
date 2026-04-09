@@ -9,7 +9,6 @@ from database.models import ProductNumericSpec
 logger = logging.getLogger(__name__)
 
 # Extraction rules: (spec_key, regex_pattern, group_index)
-# Each rule maps a spec column pattern to a numeric key
 EXTRACTION_RULES = [
     # Battery capacity: "Li-Ion 4005 mAh" → 4005
     {
@@ -60,11 +59,11 @@ EXTRACTION_RULES = [
         "pattern": r"(\d+)\s*x\s*\d+\s*pixels",
         "group": 1,
     },
-    # Refresh rate: "120Hz" or "120 Hz"
+    # Refresh rate: "120Hz" or "120 Hz" — but not part of resolution like "2560 x"
     {
         "columns": ["DISPLAY_", "DISPLAY_Type"],
         "spec_key": "refresh_rate",
-        "pattern": r"(\d+)\s*Hz",
+        "pattern": r"(?<!\d)(\d+)\s*Hz(?!\s*x)",   # <-- ИСПРАВЛЕНО
         "group": 1,
     },
     # RAM: "256GB 8GB RAM" → 8
