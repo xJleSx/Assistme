@@ -39,7 +39,6 @@ def fallback_parse(query: str) -> StructuredQuery:
     elif any(w in query_lower for w in ['tablet', 'tab', 'pad']):
         category = "tablet"
     
-    # Budget (unchanged)
     budget_match = re.search(r'(?:under|below|<=|max|budget)[\s:]*(\d+)', query_lower)
     if not budget_match:
         budget_match = re.search(r'(\d+)\s*(?:rupees|inr|dollars|usd|eur)', query_lower)
@@ -63,6 +62,19 @@ def fallback_parse(query: str) -> StructuredQuery:
             if mapped not in brands:
                 brands.append(mapped)
     
+    # Извлечение моделей: ищем фразы типа "iPhone 15 Pro", "Galaxy S23", "14 Ultra"
+    models = []
+    # Простые шаблоны: бренд + пробел + буквы/цифры
+    brand_pattern = '|'.join(re.escape(k) for k in BRAND_MAPPING.keys())
+    model_matches = re.findall(rf'\b(?:{brand_pattern})\s+([\w\s\d]+?)(?=\s+(?:vs|and|or|$))', query_lower, re.IGNORECASE)
+    for m in model_matches:
+        models.append(m.strip())
+    # Если запрос вида "compare iPhone 14 and Samsung S22", попробуем вытащить полные названия
+    compare_match = re.search(r'compare\s+(.+?)\s+and\s+(.+?)(?:\s|$)', query_lower)
+    if compare_match:
+        models.append(compare_match.group(1).strip())
+        models.append(compare_match.group(2).strip())
+    
     filters = {}
     
     # Battery
@@ -70,17 +82,18 @@ def fallback_parse(query: str) -> StructuredQuery:
     if bat_match:
         filters['battery_capacity'] = f">={bat_match.group(1)}"
     
-    # Display size: ищем паттерны с "under", "below", "max", "at most" и т.д.
-    # ИЗМЕНЕНИЕ: Добавлена поддержка <=
-    disp_upper = re.search(r'(?:under|below|less than|max|up to|at most)[\s:]*(\d+\.?\d*)\s*inch', query_lower)
+    # Display size with upper bound support
+    disp_upper = re.search(r'(?:under|below|max|less than|<=)\s*(\d+\.?\d*)\s*inch', query_lower)
+    disp_lower = re.search(r'(?:over|above|min|>=|at least)\s*(\d+\.?\d*)\s*inch', query_lower)
+    disp_exact = re.search(r'(\d+\.?\d*)\s*inch', query_lower)
     if disp_upper:
         filters['display_size'] = f"<={disp_upper.group(1)}"
-    else:
-        disp_match = re.search(r'(?:screen|display)[\s:]*(\d+\.?\d*)\s*inch', query_lower)
-        if disp_match:
-            filters['display_size'] = f">={disp_match.group(1)}"
-        elif "big screen" in query_lower:
-            filters['display_size'] = ">6"
+    elif disp_lower:
+        filters['display_size'] = f">={disp_lower.group(1)}"
+    elif disp_exact and 'under' not in query_lower and 'below' not in query_lower:
+        filters['display_size'] = f">={disp_exact.group(1)}"
+    elif "big screen" in query_lower:
+        filters['display_size'] = ">6"
     
     # RAM
     ram_match = re.search(r'(\d+)\s*gb\s*ram', query_lower)
@@ -109,13 +122,11 @@ def fallback_parse(query: str) -> StructuredQuery:
     if charge_match:
         filters['charging_watts'] = f">={charge_match.group(1)}"
     
-    # Weight: обычно "under X g", "less than X g", "lightweight"
-    # ИЗМЕНЕНИЕ: Добавлена поддержка <= для веса
-    weight_upper = re.search(r'(?:under|below|less than|max|lightweight|light)[\s:]*(\d+)\s*g', query_lower)
+    # Weight with upper bound
+    weight_upper = re.search(r'(?:under|below|less than|<=)\s*(\d+)\s*g', query_lower)
     if weight_upper:
         filters['weight'] = f"<={weight_upper.group(1)}"
-    elif any(w in query_lower for w in ['lightweight', 'light phone', 'light']):
-        # Если нет конкретного числа, но упоминается лёгкость, задаём условный порог
+    elif 'lightweight' in query_lower or 'light' in query_lower:
         filters['weight'] = "<=180"
     
     return StructuredQuery(
@@ -123,6 +134,7 @@ def fallback_parse(query: str) -> StructuredQuery:
         budget=budget,
         use_case=use_case,
         brands=brands,
+        models=models,
         filters=filters
     )
 
@@ -138,9 +150,10 @@ Extract the following:
 - budget: integer (amount in local currency, if mentioned). Use null if not present.
 - use_case: one of "gaming", "camera", "battery_life", "multimedia", "compact". Use null if not clear.
 - brands: list of brand names as they appear in the query (e.g., "iPhone" → "Apple", "Samsung", "Xiaomi"). Use standard names: Apple, Samsung, Xiaomi, Oppo, OnePlus, etc.
+- models: list of specific model names mentioned (e.g., "iPhone 15 Pro", "Galaxy S23", "14 Ultra"). Only include if explicitly stated.
 - filters: dictionary of feature constraints. Available numeric features: battery_capacity, display_size, refresh_rate, ram, storage, camera_mp, selfie_camera_mp, charging_watts, weight.
-  For most features, use ">=" operator for minimum requirements (e.g., ">=4500" for battery).
-  For weight and display size, if the user asks for "under", "less than", "light", "compact", use "<=" operator (e.g., "<=170" for weight, "<=6.2" for screen size).
+  For all numeric features, use ">=" operator for minimum requirements (e.g., ">=4500" for battery, ">=120" for refresh rate, ">=8" for RAM, ">=128" for storage).
+  For weight and display_size, use "<=" operator when the user asks for something compact or smaller (e.g., "under 6 inches" → display_size: "<=6").
   Do NOT use "=" operator for thresholds. Do NOT include units (just numbers).
   Do NOT create filters for "wireless charging" – it is not a numeric feature.
 
@@ -150,9 +163,11 @@ Return JSON only, adhering to the schema:
   "budget": 50000,
   "use_case": "gaming",
   "brands": ["Apple", "Samsung"],
+  "models": ["iPhone 15 Pro", "Galaxy S23"],
   "filters": {{
     "battery_capacity": ">=4500",
-    "weight": "<=170"
+    "refresh_rate": ">=120",
+    "weight": "<=180"
   }}
 }}
 
@@ -162,7 +177,7 @@ Just return the JSON block, no markdown formatting.
         response = client.chat.completions.create(
             model=LLM_MODEL,
             messages=[
-                {"role": "system", "content": "You are a helpful assistant that outputs only raw JSON. Use '>=' for minimum requirements, and '<=' for maximum limits like weight or screen size when user wants something small/light."},
+                {"role": "system", "content": "You are a helpful assistant that outputs only raw JSON. Always use '>=' for minimums, '<=' for maximums (weight, size). Never include units. Never create filters for 'wireless charging'."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0,
@@ -184,6 +199,9 @@ Just return the JSON block, no markdown formatting.
         else:
             data['brands'] = []
         
+        if 'models' not in data:
+            data['models'] = []
+        
         # Clean filters
         if 'filters' in data and isinstance(data['filters'], dict):
             cleaned = {}
@@ -194,7 +212,6 @@ Just return the JSON block, no markdown formatting.
                 if key == 'charging_watts' and (val_str == '>=0' or val_str == '<=0' or val_str == '0'):
                     continue
                 if not any(op in val_str for op in ['>=', '<=', '>', '<', '=']):
-                    # По умолчанию предполагаем >=
                     val_str = f">={val_str}"
                 cleaned[key] = val_str
             data['filters'] = cleaned

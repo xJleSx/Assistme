@@ -7,9 +7,10 @@ logger = logging.getLogger(__name__)
 client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
 
 
-def get_diverse_top_products(ranked_products: list, brands_requested: list = None, num_results: int = 5) -> list:
+def get_diverse_top_products(ranked_products: list, brands_requested: list = None, models_requested: list = None, num_results: int = 5) -> list:
     """
     Ensures diversity among top products:
+    - If specific models are requested, returns exactly those models (if found) without brand diversity logic.
     - If specific brands are requested, the best product from each appears at the top.
     - Otherwise, picks the best product from each brand present in ranked_products,
       then fills the rest with remaining products.
@@ -17,6 +18,20 @@ def get_diverse_top_products(ranked_products: list, brands_requested: list = Non
     """
     if not ranked_products:
         return []
+
+    # Если запрошены конкретные модели, игнорируем диверсификацию и возвращаем только их
+    if models_requested:
+        model_matches = []
+        for p in ranked_products:
+            product_name = f"{p.get('brand', '')} {p.get('name', '')}".lower()
+            for model in models_requested:
+                if model.lower() in product_name:
+                    model_matches.append(p)
+                    break
+        if model_matches:
+            # Сортируем по скору и возвращаем до num_results
+            model_matches.sort(key=lambda x: x.get('score', 0), reverse=True)
+            return model_matches[:num_results]
 
     if brands_requested:
         best_per_brand = {}
@@ -145,7 +160,7 @@ Keep the tone professional and concise.
     return prompt
 
 
-def generate_explanations(products_for_explanation, all_ranked_products, query: str, brands_requested=None) -> str:
+def generate_explanations(products_for_explanation, all_ranked_products, query: str, brands_requested=None, models_requested=None) -> str:
     """
     Generates a natural language explanation for the recommended products.
     """
@@ -153,7 +168,7 @@ def generate_explanations(products_for_explanation, all_ranked_products, query: 
         return "No products matched your exact criteria. Try adjusting your filters or budget."
 
     products_for_explanation = get_diverse_top_products(
-        all_ranked_products, brands_requested, num_results=6
+        all_ranked_products, brands_requested, models_requested, num_results=6
     )
 
     use_case = None

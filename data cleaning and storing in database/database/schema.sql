@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS products (
     category_id INTEGER REFERENCES categories(id) ON DELETE CASCADE,
     release_date VARCHAR(200),
     image_url TEXT,
+    price DOUBLE PRECISION,          -- <-- Добавлено поле цены
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(name, brand_id)
@@ -73,19 +74,7 @@ CREATE TABLE IF NOT EXISTS product_spec_values (
 CREATE INDEX IF NOT EXISTS idx_spec_values_product ON product_spec_values(product_id);
 CREATE INDEX IF NOT EXISTS idx_spec_values_field ON product_spec_values(field_id);
 
--- 7. Product Numeric Specs
-CREATE TABLE IF NOT EXISTS product_numeric_specs (
-    id SERIAL PRIMARY KEY,
-    product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
-    spec_key VARCHAR(200) NOT NULL,
-    numeric_value DOUBLE PRECISION,
-    UNIQUE(product_id, spec_key)
-);
-
-CREATE INDEX IF NOT EXISTS idx_numeric_specs_product ON product_numeric_specs(product_id);
-CREATE INDEX IF NOT EXISTS idx_numeric_specs_key_val ON product_numeric_specs(spec_key, numeric_value);
-
--- 8. Product Features
+-- 7. Product Features (заменяет product_numeric_specs)
 CREATE TABLE IF NOT EXISTS product_features (
     id SERIAL PRIMARY KEY,
     product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
@@ -95,10 +84,13 @@ CREATE TABLE IF NOT EXISTS product_features (
     UNIQUE(product_id, feature_key)
 );
 
+-- Индексы для product_features (создаются отдельно)
 CREATE INDEX IF NOT EXISTS idx_features_product ON product_features(product_id);
 CREATE INDEX IF NOT EXISTS idx_features_key ON product_features(feature_key);
+-- Составной индекс для ускорения фильтрации по числовым значениям
+CREATE INDEX IF NOT EXISTS idx_features_key_val ON product_features(feature_key, feature_value_numeric);
 
--- 9. Use Case Weights
+-- 8. Use Case Weights
 CREATE TABLE IF NOT EXISTS use_case_weights (
     id SERIAL PRIMARY KEY,
     use_case VARCHAR(200) NOT NULL,

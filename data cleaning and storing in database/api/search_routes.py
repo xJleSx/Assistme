@@ -44,19 +44,23 @@ def ai_search(request: SearchRequest, db: Session = Depends(get_db)):
                 "reason": "No products found matching those exact filters. Try loosening constraints."
             }
             
-        # === ИСПРАВЛЕНИЕ ===
-        # Раньше было [:50] → только Apple. Теперь ранжируем ВСЕ кандидаты
-        top_ids = product_ids                          # ← КЛЮЧЕВОЕ ИЗМЕНЕНИЕ
+        top_ids = product_ids
         ranked_products = rank_products(top_ids, structured_query.use_case)
         
-        # Гарантируем присутствие запрошенных брендов
-        top_results = get_diverse_top_products(ranked_products, structured_query.brands, num_results=10)
+        # Передаём models для корректной обработки конкретных моделей
+        top_results = get_diverse_top_products(
+            ranked_products, 
+            structured_query.brands, 
+            structured_query.models,  # <-- добавлено
+            num_results=10
+        )
         
         explanation = generate_explanations(
             top_results,
-            ranked_products,          # полный список для diversity
+            ranked_products,
             request.query,
-            structured_query.brands
+            structured_query.brands,
+            structured_query.models  # <-- добавлено
         )
         
         formatted_results = []

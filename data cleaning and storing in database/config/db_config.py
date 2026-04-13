@@ -70,7 +70,7 @@ def create_database():
 def create_tables():
     """Create all tables from schema.sql."""
     schema_path = os.path.join(os.path.dirname(__file__), "..", "database", "schema.sql")
-    with open(schema_path, "r") as f:
+    with open(schema_path, "r", encoding="utf-8") as f:   # <-- добавлено
         schema_sql = f.read()
     
     with engine.connect() as conn:

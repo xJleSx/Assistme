@@ -32,12 +32,21 @@ def build_product_query(session, structured_query: StructuredQuery):
             params[param_name] = f"%{brand}%"
         where_clauses.append(f"({' OR '.join(brand_conditions)})")
     
-    # Budget – ИЗМЕНЕНИЕ: теперь используем цену из БД
+    # Models (explicit model names)
+    if structured_query.models:
+        model_conditions = []
+        for i, model in enumerate(structured_query.models):
+            param_name = f"model_{i}"
+            model_conditions.append(f"p.name ILIKE :{param_name}")
+            params[param_name] = f"%{model}%"
+        where_clauses.append(f"({' OR '.join(model_conditions)})")
+    
+    # Budget
     if structured_query.budget is not None:
         where_clauses.append("p.price <= :budget")
-        params["budget"] = float(structured_query.budget)
+        params["budget"] = structured_query.budget
     
-    # Numeric filters
+    # Numeric filters (используем product_features вместо product_numeric_specs)
     feature_joins = 0
     for feature_key, condition in structured_query.filters.items():
         if feature_key not in SUPPORTED_NUMERIC_KEYS:
@@ -46,13 +55,14 @@ def build_product_query(session, structured_query: StructuredQuery):
         
         feature_joins += 1
         alias = f"f{feature_joins}"
-        joins.append(f"LEFT JOIN product_numeric_specs {alias} ON p.id = {alias}.product_id AND {alias}.spec_key = :key_{alias}")
-        where_clauses.append(f"{alias}.spec_key = :key_{alias} AND {alias}.numeric_value IS NOT NULL")
+        # Теперь джойнимся к product_features
+        joins.append(f"LEFT JOIN product_features {alias} ON p.id = {alias}.product_id AND {alias}.feature_key = :key_{alias}")
+        where_clauses.append(f"{alias}.feature_key = :key_{alias} AND {alias}.feature_value_numeric IS NOT NULL")
         params[f"key_{alias}"] = feature_key
         
         op, val = _parse_condition(condition)
         if op and val is not None:
-            where_clauses.append(f"{alias}.numeric_value {op} :val_{alias}")
+            where_clauses.append(f"{alias}.feature_value_numeric {op} :val_{alias}")
             params[f"val_{alias}"] = val
         else:
             logger.warning(f"Failed to parse condition '{condition}' for feature '{feature_key}'")

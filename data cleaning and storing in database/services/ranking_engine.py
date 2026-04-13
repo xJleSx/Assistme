@@ -6,48 +6,92 @@ from config.db_config import get_session
 
 logger = logging.getLogger(__name__)
 
-def calculate_base_score(product_id: int) -> float:
-    """
-    Calculate a basic overall score for a product based on all available numeric specs.
-    Uses min-max normalization across all products for each feature, then averages.
-    """
+# Глобальный кэш min/max значений для ускорения
+_global_min_max_cache = None
+
+def _get_global_min_max():
+    """Получает min/max для всех числовых фич из product_features одним запросом."""
+    global _global_min_max_cache
+    if _global_min_max_cache is not None:
+        return _global_min_max_cache
     session = get_session()
     try:
         query = text("""
-            SELECT spec_key, numeric_value
-            FROM product_numeric_specs
-            WHERE product_id = :pid AND numeric_value IS NOT NULL
+            SELECT feature_key, MIN(feature_value_numeric) as mn, MAX(feature_value_numeric) as mx
+            FROM product_features
+            WHERE feature_value_numeric IS NOT NULL
+            GROUP BY feature_key
         """)
-        rows = session.execute(query, {"pid": product_id}).fetchall()
-        if not rows:
-            return 0.0
-        
-        all_values = {}
-        for key in [r.spec_key for r in rows]:
-            q = text("SELECT numeric_value FROM product_numeric_specs WHERE spec_key = :key AND numeric_value IS NOT NULL")
-            vals = [v[0] for v in session.execute(q, {"key": key}).fetchall()]
-            if vals:
-                all_values[key] = (min(vals), max(vals))
-        
-        total_normalized = 0.0
-        count = 0
+        rows = session.execute(query).fetchall()
+        min_max = {}
         for row in rows:
-            key = row.spec_key
-            val = row.numeric_value
-            if key in all_values:
-                mn, mx = all_values[key]
-                if mx > mn:
-                    if key == "weight":
-                        normalized = 1.0 - (val - mn) / (mx - mn)
-                    else:
-                        normalized = (val - mn) / (mx - mn)
-                    total_normalized += normalized
-                    count += 1
-        
-        return total_normalized / count if count > 0 else 0.0
+            min_max[row.feature_key] = (row.mn, row.mx)
+        _global_min_max_cache = min_max
+        return min_max
     except Exception as e:
-        logger.error(f"Error calculating base score for product {product_id}: {e}")
-        return 0.0
+        logger.error(f"Error fetching global min/max: {e}")
+        return {}
+    finally:
+        session.close()
+
+def calculate_base_scores_batch(product_ids: list) -> dict:
+    """
+    Вычисляет базовый скор для списка продуктов одним пакетным запросом.
+    Возвращает словарь {product_id: score}
+    """
+    if not product_ids:
+        return {}
+    
+    min_max = _get_global_min_max()
+    if not min_max:
+        return {pid: 0.0 for pid in product_ids}
+    
+    placeholders = ", ".join([f":p{i}" for i in range(len(product_ids))])
+    params = {f"p{i}": pid for i, pid in enumerate(product_ids)}
+    
+    session = get_session()
+    try:
+        query = text(f"""
+            SELECT pf.product_id, pf.feature_key, pf.feature_value_numeric
+            FROM product_features pf
+            WHERE pf.product_id IN ({placeholders})
+              AND pf.feature_value_numeric IS NOT NULL
+        """)
+        rows = session.execute(query, params).fetchall()
+        
+        # Группируем значения по продуктам
+        prod_values = {}
+        for row in rows:
+            pid = row.product_id
+            if pid not in prod_values:
+                prod_values[pid] = {}
+            prod_values[pid][row.feature_key] = row.feature_value_numeric
+        
+        scores = {}
+        for pid in product_ids:
+            values = prod_values.get(pid, {})
+            total_normalized = 0.0
+            count = 0
+            for key, val in values.items():
+                if key in min_max:
+                    mn, mx = min_max[key]
+                    if mx > mn:
+                        if key == "weight":
+                            normalized = 1.0 - (val - mn) / (mx - mn)
+                        else:
+                            normalized = (val - mn) / (mx - mn)
+                        total_normalized += normalized
+                        count += 1
+            scores[pid] = total_normalized / count if count > 0 else 0.0
+        
+        # Для продуктов без фич ставим 0
+        for pid in product_ids:
+            if pid not in scores:
+                scores[pid] = 0.0
+        return scores
+    except Exception as e:
+        logger.error(f"Error calculating batch scores: {e}")
+        return {pid: 0.0 for pid in product_ids}
     finally:
         session.close()
 
@@ -56,17 +100,17 @@ def rank_products(product_ids: list, use_case: str):
         return []
     
     if not use_case:
+        scores = calculate_base_scores_batch(product_ids)
         results = []
         for pid in product_ids:
             try:
                 specs = get_product_specs(pid)
-                base_score = calculate_base_score(pid)
                 results.append({
                     "id": pid,
-                    "name": specs.get("product", {}).get("name", "Unknown"),
-                    "brand": specs.get("product", {}).get("brand", "Unknown"),
-                    "category": specs.get("product", {}).get("category", ""),
-                    "score": base_score,
+                    "name": specs.get("product", {}).get("name", "Unknown") if specs else "Unknown",
+                    "brand": specs.get("product", {}).get("brand", "Unknown") if specs else "Unknown",
+                    "category": specs.get("product", {}).get("category", "") if specs else "",
+                    "score": scores.get(pid, 0.0),
                     "details": {}
                 })
             except Exception as e:

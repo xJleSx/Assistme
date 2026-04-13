@@ -51,8 +51,7 @@ class Product(Base):
     category_id = Column(Integer, ForeignKey("categories.id", ondelete="CASCADE"))
     release_date = Column(String(200))
     image_url = Column(Text)
-    # ИЗМЕНЕНИЕ: Добавлено поле цены
-    price = Column(Float)  # Храним как число
+    price = Column(Float)                     # <-- Добавлено поле цены
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -61,7 +60,7 @@ class Product(Base):
     brand = relationship("Brand", back_populates="products")
     category = relationship("Category", back_populates="products")
     spec_values = relationship("ProductSpecValue", back_populates="product", cascade="all, delete-orphan")
-    numeric_specs = relationship("ProductNumericSpec", back_populates="product", cascade="all, delete-orphan")
+    # Связь с numeric_specs удалена, используем только features
     features = relationship("ProductFeature", back_populates="product", cascade="all, delete-orphan")
 
     def __repr__(self):
@@ -117,17 +116,7 @@ class ProductSpecValue(Base):
     field = relationship("SpecField", back_populates="spec_values")
 
 
-class ProductNumericSpec(Base):
-    __tablename__ = "product_numeric_specs"
-
-    id = Column(Integer, primary_key=True)
-    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"))
-    spec_key = Column(String(200), nullable=False)
-    numeric_value = Column(Float)
-
-    __table_args__ = (UniqueConstraint("product_id", "spec_key"),)
-
-    product = relationship("Product", back_populates="numeric_specs")
+# Класс ProductNumericSpec удалён полностью
 
 
 class ProductFeature(Base):

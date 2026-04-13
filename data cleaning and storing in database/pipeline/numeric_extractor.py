@@ -1,37 +1,38 @@
 """
 Numeric extractor — extracts numeric values from specification text using regex.
+Now inserts into product_features and updates Product.price.
 """
 import re
 import logging
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from database.models import ProductNumericSpec
+from database.models import ProductFeature, Product
 
 logger = logging.getLogger(__name__)
 
 # Extraction rules: (spec_key, regex_pattern, group_index)
 EXTRACTION_RULES = [
-    # Battery capacity: "Li-Ion 4005 mAh" → 4005
+    # Battery capacity
     {
         "columns": ["BATTERY_Type"],
         "spec_key": "battery_capacity",
         "pattern": r"(\d+)\s*mAh",
         "group": 1,
     },
-    # Display size: "6.1 inches" → 6.1
+    # Display size
     {
         "columns": ["DISPLAY_Size"],
         "spec_key": "display_size",
         "pattern": r"([\d.]+)\s*inches",
         "group": 1,
     },
-    # Weight: "169 g" → 169
+    # Weight
     {
         "columns": ["BODY_Weight"],
         "spec_key": "weight",
         "pattern": r"([\d.]+)\s*g\b",
         "group": 1,
     },
-    # Camera MP from main camera columns
+    # Camera MP
     {
         "columns": ["MAIN_CAMERA_Single", "MAIN_CAMERA_Dual", "MAIN_CAMERA_Triple", "MAIN_CAMERA_Quad"],
         "spec_key": "camera_mp",
@@ -45,78 +46,76 @@ EXTRACTION_RULES = [
         "pattern": r"(\d+)\s*MP",
         "group": 1,
     },
-    # Resolution height: "1170 x 2532 pixels" → 2532
+    # Resolution height
     {
         "columns": ["DISPLAY_Resolution"],
         "spec_key": "resolution_height",
         "pattern": r"\d+\s*x\s*(\d+)\s*pixels",
         "group": 1,
     },
-    # Resolution width: "1170 x 2532 pixels" → 1170
+    # Resolution width
     {
         "columns": ["DISPLAY_Resolution"],
         "spec_key": "resolution_width",
         "pattern": r"(\d+)\s*x\s*\d+\s*pixels",
         "group": 1,
     },
-    # Refresh rate: "120Hz" or "120 Hz" — but not part of resolution like "2560 x"
+    # Refresh rate
     {
         "columns": ["DISPLAY_", "DISPLAY_Type"],
         "spec_key": "refresh_rate",
-        "pattern": r"(?<!\d)(\d+)\s*Hz(?!\s*x)",   # <-- ИСПРАВЛЕНО
+        "pattern": r"(?<!\d)(\d+)\s*Hz(?!\s*x)",
         "group": 1,
     },
-    # RAM: "256GB 8GB RAM" → 8
+    # RAM
     {
         "columns": ["MEMORY_Internal"],
         "spec_key": "ram",
         "pattern": r"(\d+)\s*GB\s*RAM",
         "group": 1,
     },
-    # Storage: "256GB 8GB RAM" → 256, or "128GB" → 128
+    # Storage
     {
         "columns": ["MEMORY_Internal"],
         "spec_key": "storage",
         "pattern": r"(\d+)\s*GB(?!\s*RAM)",
         "group": 1,
     },
-    # Charging watts: "120W wired" or "25W" → number
+    # Charging watts
     {
         "columns": ["BATTERY_Charging"],
         "spec_key": "charging_watts",
         "pattern": r"(\d+)\s*W\b",
         "group": 1,
     },
-    # Screen-to-body ratio: "~86.4%" → 86.4
+    # Screen-to-body ratio
     {
         "columns": ["BODY_"],
         "spec_key": "screen_to_body_ratio",
         "pattern": r"~?([\d.]+)\s*%\s*screen-to-body",
         "group": 1,
     },
-    # Thickness from dimensions: "7.8 mm thickness"  
+    # Thickness
     {
         "columns": ["BODY_Dimensions"],
         "spec_key": "thickness",
         "pattern": r"([\d.]+)\s*mm\b",
         "group": 1,
     },
-    # ИЗМЕНЕНИЕ: Добавлено правило для извлечения цены из MISC_Price
+    # Price (добавлено в фазе 1)
     {
         "columns": ["MISC_Price"],
         "spec_key": "price",
-        "pattern": r"([\d,]+(?:\.\d+)?)",  # Захватывает числа с запятыми и точками
+        "pattern": r"(\d+(?:\.\d+)?)\s*(?:EUR|USD|INR|£|€|$)",
         "group": 1,
     },
 ]
 
-
 def extract_numeric_specs(session, product_id: int, row_data: dict) -> int:
     """
-    Extract numeric values from a product's raw spec data.
-    
-    Returns:
-        Number of numeric specs inserted
+    Extract numeric values from a product's raw spec data and store in product_features.
+    Also updates Product.price field.
+    Returns number of features inserted.
     """
     values_to_insert = []
     seen_keys = set()
@@ -137,25 +136,30 @@ def extract_numeric_specs(session, product_id: int, row_data: dict) -> int:
             match = re.search(rule["pattern"], text, re.IGNORECASE)
             if match:
                 try:
-                    # Для цены убираем запятые и конвертируем во float
-                    if rule["spec_key"] == "price":
-                        num_str = match.group(1).replace(",", "")
-                        numeric_val = float(num_str)
-                    else:
-                        numeric_val = float(match.group(rule["group"]))
+                    numeric_val = float(match.group(rule["group"]))
+                    
+                    # Сохраняем в product_features
                     values_to_insert.append({
                         "product_id": product_id,
-                        "spec_key": rule["spec_key"],
-                        "numeric_value": numeric_val,
+                        "feature_key": rule["spec_key"],
+                        "feature_value_numeric": numeric_val,
+                        "feature_value_text": None,
                     })
                     seen_keys.add(rule["spec_key"])
-                    break  # Found a match, move to next rule
+                    
+                    # Обновляем поле price в таблице products
+                    if rule["spec_key"] == "price":
+                        product = session.query(Product).get(product_id)
+                        if product:
+                            product.price = numeric_val
+                    
+                    break
                 except (ValueError, IndexError):
                     continue
     
     if values_to_insert:
-        stmt = pg_insert(ProductNumericSpec).values(values_to_insert)
-        stmt = stmt.on_conflict_do_nothing(index_elements=["product_id", "spec_key"])
+        stmt = pg_insert(ProductFeature).values(values_to_insert)
+        stmt = stmt.on_conflict_do_nothing(index_elements=["product_id", "feature_key"])
         session.execute(stmt)
     
     return len(values_to_insert)
