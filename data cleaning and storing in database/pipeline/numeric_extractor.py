@@ -101,6 +101,13 @@ EXTRACTION_RULES = [
         "pattern": r"([\d.]+)\s*mm\b",
         "group": 1,
     },
+    # ИЗМЕНЕНИЕ: Добавлено правило для извлечения цены из MISC_Price
+    {
+        "columns": ["MISC_Price"],
+        "spec_key": "price",
+        "pattern": r"([\d,]+(?:\.\d+)?)",  # Захватывает числа с запятыми и точками
+        "group": 1,
+    },
 ]
 
 
@@ -130,7 +137,12 @@ def extract_numeric_specs(session, product_id: int, row_data: dict) -> int:
             match = re.search(rule["pattern"], text, re.IGNORECASE)
             if match:
                 try:
-                    numeric_val = float(match.group(rule["group"]))
+                    # Для цены убираем запятые и конвертируем во float
+                    if rule["spec_key"] == "price":
+                        num_str = match.group(1).replace(",", "")
+                        numeric_val = float(num_str)
+                    else:
+                        numeric_val = float(match.group(rule["group"]))
                     values_to_insert.append({
                         "product_id": product_id,
                         "spec_key": rule["spec_key"],

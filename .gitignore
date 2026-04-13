@@ -1,0 +1,5 @@
+echo "__pycache__/" >> .gitignore
+echo ".env" >> .gitignore
+echo "*.pyc" >> .gitignore
+echo "logs/*.log" >> .gitignore   # если не хотите логи в репозитории
+git add .gitignore

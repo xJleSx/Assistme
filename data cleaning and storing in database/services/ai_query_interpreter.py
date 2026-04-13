@@ -30,10 +30,6 @@ SUPPORTED_NUMERIC_FEATURES = {
     'camera_mp', 'selfie_camera_mp', 'charging_watts', 'weight'
 }
 
-def _extract_number_with_unit(text: str) -> int:
-    match = re.search(r'(\d+)', text)
-    return int(match.group(1)) if match else None
-
 def fallback_parse(query: str) -> StructuredQuery:
     query_lower = query.lower()
     
@@ -43,6 +39,7 @@ def fallback_parse(query: str) -> StructuredQuery:
     elif any(w in query_lower for w in ['tablet', 'tab', 'pad']):
         category = "tablet"
     
+    # Budget (unchanged)
     budget_match = re.search(r'(?:under|below|<=|max|budget)[\s:]*(\d+)', query_lower)
     if not budget_match:
         budget_match = re.search(r'(\d+)\s*(?:rupees|inr|dollars|usd|eur)', query_lower)
@@ -73,12 +70,17 @@ def fallback_parse(query: str) -> StructuredQuery:
     if bat_match:
         filters['battery_capacity'] = f">={bat_match.group(1)}"
     
-    # Display size
-    disp_match = re.search(r'(?:screen|display)[\s:]*(\d+\.?\d*)\s*inch', query_lower)
-    if disp_match:
-        filters['display_size'] = f">={disp_match.group(1)}"
-    elif "big screen" in query_lower:
-        filters['display_size'] = ">6"
+    # Display size: ищем паттерны с "under", "below", "max", "at most" и т.д.
+    # ИЗМЕНЕНИЕ: Добавлена поддержка <=
+    disp_upper = re.search(r'(?:under|below|less than|max|up to|at most)[\s:]*(\d+\.?\d*)\s*inch', query_lower)
+    if disp_upper:
+        filters['display_size'] = f"<={disp_upper.group(1)}"
+    else:
+        disp_match = re.search(r'(?:screen|display)[\s:]*(\d+\.?\d*)\s*inch', query_lower)
+        if disp_match:
+            filters['display_size'] = f">={disp_match.group(1)}"
+        elif "big screen" in query_lower:
+            filters['display_size'] = ">6"
     
     # RAM
     ram_match = re.search(r'(\d+)\s*gb\s*ram', query_lower)
@@ -102,17 +104,19 @@ def fallback_parse(query: str) -> StructuredQuery:
     if cam_match:
         filters['camera_mp'] = f">={cam_match.group(1)}"
     
-    # Charging watts (only if explicit number, not from "wireless")
+    # Charging watts
     charge_match = re.search(r'(\d+)\s*w\s*charging', query_lower)
     if charge_match:
         filters['charging_watts'] = f">={charge_match.group(1)}"
     
-    # Weight
-    weight_match = re.search(r'(\d+)\s*g(?!b)', query_lower)
-    if weight_match:
-        filters['weight'] = f"<={weight_match.group(1)}"
-    
-    # Note: "wireless charging" does NOT create any filter
+    # Weight: обычно "under X g", "less than X g", "lightweight"
+    # ИЗМЕНЕНИЕ: Добавлена поддержка <= для веса
+    weight_upper = re.search(r'(?:under|below|less than|max|lightweight|light)[\s:]*(\d+)\s*g', query_lower)
+    if weight_upper:
+        filters['weight'] = f"<={weight_upper.group(1)}"
+    elif any(w in query_lower for w in ['lightweight', 'light phone', 'light']):
+        # Если нет конкретного числа, но упоминается лёгкость, задаём условный порог
+        filters['weight'] = "<=180"
     
     return StructuredQuery(
         category=category,
@@ -135,8 +139,8 @@ Extract the following:
 - use_case: one of "gaming", "camera", "battery_life", "multimedia", "compact". Use null if not clear.
 - brands: list of brand names as they appear in the query (e.g., "iPhone" → "Apple", "Samsung", "Xiaomi"). Use standard names: Apple, Samsung, Xiaomi, Oppo, OnePlus, etc.
 - filters: dictionary of feature constraints. Available numeric features: battery_capacity, display_size, refresh_rate, ram, storage, camera_mp, selfie_camera_mp, charging_watts, weight.
-  For all numeric features, use ">=" operator for minimum requirements (e.g., ">=4500" for battery, ">=120" for refresh rate, ">=8" for RAM, ">=128" for storage).
-  For weight, use "<=" for lighter devices.
+  For most features, use ">=" operator for minimum requirements (e.g., ">=4500" for battery).
+  For weight and display size, if the user asks for "under", "less than", "light", "compact", use "<=" operator (e.g., "<=170" for weight, "<=6.2" for screen size).
   Do NOT use "=" operator for thresholds. Do NOT include units (just numbers).
   Do NOT create filters for "wireless charging" – it is not a numeric feature.
 
@@ -148,7 +152,7 @@ Return JSON only, adhering to the schema:
   "brands": ["Apple", "Samsung"],
   "filters": {{
     "battery_capacity": ">=4500",
-    "refresh_rate": ">=120"
+    "weight": "<=170"
   }}
 }}
 
@@ -158,7 +162,7 @@ Just return the JSON block, no markdown formatting.
         response = client.chat.completions.create(
             model=LLM_MODEL,
             messages=[
-                {"role": "system", "content": "You are a helpful assistant that outputs only raw JSON. Always use '>=' for numeric filters. Never include units. Never create filters for 'wireless charging'."},
+                {"role": "system", "content": "You are a helpful assistant that outputs only raw JSON. Use '>=' for minimum requirements, and '<=' for maximum limits like weight or screen size when user wants something small/light."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0,
@@ -187,10 +191,10 @@ Just return the JSON block, no markdown formatting.
                 if key not in SUPPORTED_NUMERIC_FEATURES:
                     continue
                 val_str = str(val)
-                # Remove useless zero thresholds
                 if key == 'charging_watts' and (val_str == '>=0' or val_str == '<=0' or val_str == '0'):
                     continue
                 if not any(op in val_str for op in ['>=', '<=', '>', '<', '=']):
+                    # По умолчанию предполагаем >=
                     val_str = f">={val_str}"
                 cleaned[key] = val_str
             data['filters'] = cleaned

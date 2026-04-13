@@ -51,6 +51,8 @@ class Product(Base):
     category_id = Column(Integer, ForeignKey("categories.id", ondelete="CASCADE"))
     release_date = Column(String(200))
     image_url = Column(Text)
+    # ИЗМЕНЕНИЕ: Добавлено поле цены
+    price = Column(Float)  # Храним как число
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

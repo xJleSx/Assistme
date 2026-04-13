@@ -1,10 +1,10 @@
 import logging
+import re
 from sqlalchemy import text
 from schemas.query_schema import StructuredQuery
 
 logger = logging.getLogger(__name__)
 
-# Supported numeric features (must match those in product_numeric_specs)
 SUPPORTED_NUMERIC_KEYS = {
     'battery_capacity', 'display_size', 'refresh_rate', 'ram', 'storage',
     'camera_mp', 'selfie_camera_mp', 'charging_watts', 'weight'
@@ -22,7 +22,7 @@ def build_product_query(session, structured_query: StructuredQuery):
         where_clauses.append("c.slug = :category")
         params["category"] = structured_query.category.strip().lower()
     
-    # Brands – case-insensitive partial match
+    # Brands
     if structured_query.brands:
         joins.append("JOIN brands b ON p.brand_id = b.id")
         brand_conditions = []
@@ -32,9 +32,10 @@ def build_product_query(session, structured_query: StructuredQuery):
             params[param_name] = f"%{brand}%"
         where_clauses.append(f"({' OR '.join(brand_conditions)})")
     
-    # Budget – skip if present (no price data)
+    # Budget – ИЗМЕНЕНИЕ: теперь используем цену из БД
     if structured_query.budget is not None:
-        logger.warning("Budget filter is not supported (no price data in DB). Ignoring.")
+        where_clauses.append("p.price <= :budget")
+        params["budget"] = float(structured_query.budget)
     
     # Numeric filters
     feature_joins = 0
@@ -57,7 +58,6 @@ def build_product_query(session, structured_query: StructuredQuery):
             logger.warning(f"Failed to parse condition '{condition}' for feature '{feature_key}'")
     
     if not joins:
-        # No filters, just products
         sql = base_sql
     else:
         sql = base_sql + " " + " ".join(joins)
@@ -73,27 +73,18 @@ def build_product_query(session, structured_query: StructuredQuery):
         return []
 
 def _parse_condition(condition: str):
-    """
-    Parse a condition string like ">=8" or ">4500" into (operator, numeric_value).
-    Returns (None, None) on failure.
-    """
     condition = condition.strip()
     operators = ['>=', '<=', '!=', '>', '<', '=']
     for op in operators:
         if condition.startswith(op):
             val_str = condition[len(op):].strip()
             try:
-                # Remove any non-numeric characters except dot and minus
                 val_str = re.sub(r'[^\d.-]', '', val_str)
                 return op, float(val_str)
             except ValueError:
                 return None, None
-    # If no operator, assume ">="
     try:
         val_str = re.sub(r'[^\d.-]', '', condition)
         return '>=', float(val_str)
     except ValueError:
         return None, None
-
-# Add missing import
-import re

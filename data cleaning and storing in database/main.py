@@ -158,13 +158,16 @@ def run_pipeline():
                     
                     row_dict = row.to_dict()
                     
-                    # Extract numeric specs
+                    # Extract numeric specs (теперь включает price)
                     n = extract_numeric_specs(session, product.id, row_dict)
                     numeric_count += n
                     
                     # Extract features
                     f = extract_features(session, product.id, row_dict)
                     feature_count += f
+                    
+                    # Цена извлекается в numeric_extractor и сохраняется в product_numeric_specs,
+                    # а также напрямую в поле product.price (см. изменения в numeric_extractor.py)
                 
                 session.commit()
                 
