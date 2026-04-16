@@ -47,12 +47,13 @@ def ai_search(request: SearchRequest, db: Session = Depends(get_db)):
         top_ids = product_ids
         ranked_products = rank_products(top_ids, structured_query.use_case)
         
-        # Передаём models для корректной обработки конкретных моделей
+        # max_per_brand=2 для баланса между разнообразием и глубиной
         top_results = get_diverse_top_products(
             ranked_products, 
             structured_query.brands, 
-            structured_query.models,  # <-- добавлено
-            num_results=10
+            structured_query.models,
+            num_results=10,
+            max_per_brand=2
         )
         
         explanation = generate_explanations(
@@ -60,7 +61,7 @@ def ai_search(request: SearchRequest, db: Session = Depends(get_db)):
             ranked_products,
             request.query,
             structured_query.brands,
-            structured_query.models  # <-- добавлено
+            structured_query.models
         )
         
         formatted_results = []

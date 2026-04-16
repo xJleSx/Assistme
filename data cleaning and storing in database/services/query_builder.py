@@ -2,6 +2,7 @@ import logging
 import re
 from sqlalchemy import text
 from schemas.query_schema import StructuredQuery
+from config.currency_config import BASE_CURRENCY, convert_to_base, EXCHANGE_RATES
 
 logger = logging.getLogger(__name__)
 
@@ -9,6 +10,7 @@ SUPPORTED_NUMERIC_KEYS = {
     'battery_capacity', 'display_size', 'refresh_rate', 'ram', 'storage',
     'camera_mp', 'selfie_camera_mp', 'charging_watts', 'weight'
 }
+
 
 def build_product_query(session, structured_query: StructuredQuery):
     base_sql = "SELECT DISTINCT p.id FROM products p "
@@ -32,7 +34,7 @@ def build_product_query(session, structured_query: StructuredQuery):
             params[param_name] = f"%{brand}%"
         where_clauses.append(f"({' OR '.join(brand_conditions)})")
     
-    # Models (explicit model names)
+    # Models
     if structured_query.models:
         model_conditions = []
         for i, model in enumerate(structured_query.models):
@@ -41,12 +43,35 @@ def build_product_query(session, structured_query: StructuredQuery):
             params[param_name] = f"%{model}%"
         where_clauses.append(f"({' OR '.join(model_conditions)})")
     
-    # Budget
+    # Budget с конвертацией валют
     if structured_query.budget is not None:
-        where_clauses.append("p.price <= :budget")
-        params["budget"] = structured_query.budget
+        # Определяем валюту бюджета (пока предполагаем INR, можно улучшить через детекцию в запросе)
+        budget_currency = "INR"  # временно, позже можно извлекать из запроса
+        budget_in_base = convert_to_base(structured_query.budget, budget_currency)
+        logger.info(f"Budget {structured_query.budget} {budget_currency} -> {budget_in_base:.2f} {BASE_CURRENCY}")
+        
+        # Строим условие с учётом валюты продукта
+        where_clauses.append("""
+            p.price IS NOT NULL AND 
+            p.price * COALESCE(
+                (SELECT rate FROM (VALUES 
+                    ('USD', :rate_usd),
+                    ('EUR', :rate_eur),
+                    ('INR', :rate_inr),
+                    ('GBP', :rate_gbp),
+                    ('RUB', :rate_rub)
+                ) AS rates(currency, rate) WHERE rates.currency = p.price_currency),
+                1.0
+            ) <= :budget_base
+        """)
+        params["budget_base"] = budget_in_base
+        params["rate_usd"] = EXCHANGE_RATES.get("USD", 1.0)
+        params["rate_eur"] = EXCHANGE_RATES.get("EUR", 0.92)
+        params["rate_inr"] = EXCHANGE_RATES.get("INR", 0.012)
+        params["rate_gbp"] = EXCHANGE_RATES.get("GBP", 1.26)
+        params["rate_rub"] = EXCHANGE_RATES.get("RUB", 0.011)
     
-    # Numeric filters (используем product_features вместо product_numeric_specs)
+    # Numeric filters
     feature_joins = 0
     for feature_key, condition in structured_query.filters.items():
         if feature_key not in SUPPORTED_NUMERIC_KEYS:
@@ -55,7 +80,6 @@ def build_product_query(session, structured_query: StructuredQuery):
         
         feature_joins += 1
         alias = f"f{feature_joins}"
-        # Теперь джойнимся к product_features
         joins.append(f"LEFT JOIN product_features {alias} ON p.id = {alias}.product_id AND {alias}.feature_key = :key_{alias}")
         where_clauses.append(f"{alias}.feature_key = :key_{alias} AND {alias}.feature_value_numeric IS NOT NULL")
         params[f"key_{alias}"] = feature_key
@@ -81,6 +105,7 @@ def build_product_query(session, structured_query: StructuredQuery):
     except Exception as e:
         logger.error(f"SQL execution error: {e}")
         return []
+
 
 def _parse_condition(condition: str):
     condition = condition.strip()

@@ -1,15 +1,16 @@
 """
 Numeric extractor — extracts numeric values from specification text using regex.
-Now inserts into product_features and updates Product.price.
+Now inserts into product_features and updates Product.price and price_currency.
 """
 import re
 import logging
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from database.models import ProductFeature, Product
+from config.currency_config import get_currency_from_text
 
 logger = logging.getLogger(__name__)
 
-# Extraction rules: (spec_key, regex_pattern, group_index)
+# Extraction rules
 EXTRACTION_RULES = [
     # Battery capacity
     {
@@ -102,19 +103,20 @@ EXTRACTION_RULES = [
         "pattern": r"([\d.]+)\s*mm\b",
         "group": 1,
     },
-    # Price (добавлено в фазе 1)
+    # Price
     {
         "columns": ["MISC_Price"],
         "spec_key": "price",
-        "pattern": r"(\d+(?:\.\d+)?)\s*(?:EUR|USD|INR|£|€|$)",
+        "pattern": r"(\d+(?:\.\d+)?)\s*(?:EUR|USD|INR|£|€|$|₹)",
         "group": 1,
     },
 ]
 
+
 def extract_numeric_specs(session, product_id: int, row_data: dict) -> int:
     """
     Extract numeric values from a product's raw spec data and store in product_features.
-    Also updates Product.price field.
+    Also updates Product.price and price_currency fields.
     Returns number of features inserted.
     """
     values_to_insert = []
@@ -147,11 +149,12 @@ def extract_numeric_specs(session, product_id: int, row_data: dict) -> int:
                     })
                     seen_keys.add(rule["spec_key"])
                     
-                    # Обновляем поле price в таблице products
+                    # Обновляем поля цены и валюты в таблице products
                     if rule["spec_key"] == "price":
                         product = session.query(Product).get(product_id)
                         if product:
                             product.price = numeric_val
+                            product.price_currency = get_currency_from_text(text)
                     
                     break
                 except (ValueError, IndexError):

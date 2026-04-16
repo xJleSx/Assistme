@@ -1,5 +1,6 @@
 echo "__pycache__/" >> .gitignore
-echo ".env" >> .gitignore
+if (-not (Test-Path .gitignore)) { New-Item .gitignore }
+Add-Content .gitignore "`n.env"
 echo "*.pyc" >> .gitignore
 echo "logs/*.log" >> .gitignore   # если не хотите логи в репозитории
 git add .gitignore

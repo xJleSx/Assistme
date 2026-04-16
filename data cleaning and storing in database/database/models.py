@@ -51,7 +51,8 @@ class Product(Base):
     category_id = Column(Integer, ForeignKey("categories.id", ondelete="CASCADE"))
     release_date = Column(String(200))
     image_url = Column(Text)
-    price = Column(Float)                     # <-- Добавлено поле цены
+    price = Column(Float)
+    price_currency = Column(String(3))      # <-- валюта
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -60,7 +61,6 @@ class Product(Base):
     brand = relationship("Brand", back_populates="products")
     category = relationship("Category", back_populates="products")
     spec_values = relationship("ProductSpecValue", back_populates="product", cascade="all, delete-orphan")
-    # Связь с numeric_specs удалена, используем только features
     features = relationship("ProductFeature", back_populates="product", cascade="all, delete-orphan")
 
     def __repr__(self):
@@ -114,9 +114,6 @@ class ProductSpecValue(Base):
 
     product = relationship("Product", back_populates="spec_values")
     field = relationship("SpecField", back_populates="spec_values")
-
-
-# Класс ProductNumericSpec удалён полностью
 
 
 class ProductFeature(Base):

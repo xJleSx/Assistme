@@ -7,19 +7,32 @@ logger = logging.getLogger(__name__)
 client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
 
 
-def get_diverse_top_products(ranked_products: list, brands_requested: list = None, models_requested: list = None, num_results: int = 5) -> list:
+def get_diverse_top_products(
+    ranked_products: list,
+    brands_requested: list = None,
+    models_requested: list = None,
+    num_results: int = 5,
+    max_per_brand: int = 2               # <-- новый параметр
+) -> list:
     """
-    Ensures diversity among top products:
-    - If specific models are requested, returns exactly those models (if found) without brand diversity logic.
-    - If specific brands are requested, the best product from each appears at the top.
-    - Otherwise, picks the best product from each brand present in ranked_products,
-      then fills the rest with remaining products.
-    - Finally, sorts the diverse list by score descending.
+    Формирует разнообразный список топ-продуктов.
+
+    - Если указаны конкретные модели, возвращаются только они (без ограничений).
+    - Если указаны бренды, сначала включаются лучшие продукты каждого запрошенного бренда,
+      затем остальные продукты с учётом max_per_brand.
+    - Иначе выбираются лучшие продукты разных брендов, затем оставшиеся с учётом max_per_brand.
+
+    :param ranked_products: список продуктов со скором
+    :param brands_requested: список запрошенных брендов
+    :param models_requested: список запрошенных моделей
+    :param num_results: желаемое количество результатов
+    :param max_per_brand: максимальное количество продуктов одного бренда в выдаче
+    :return: отфильтрованный и отсортированный список продуктов
     """
     if not ranked_products:
         return []
 
-    # Если запрошены конкретные модели, игнорируем диверсификацию и возвращаем только их
+    # Если запрошены конкретные модели, возвращаем только их без диверсификации
     if models_requested:
         model_matches = []
         for p in ranked_products:
@@ -29,10 +42,22 @@ def get_diverse_top_products(ranked_products: list, brands_requested: list = Non
                     model_matches.append(p)
                     break
         if model_matches:
-            # Сортируем по скору и возвращаем до num_results
             model_matches.sort(key=lambda x: x.get('score', 0), reverse=True)
             return model_matches[:num_results]
 
+    # Счётчики брендов для ограничения max_per_brand
+    brand_counts = {}
+
+    def can_add_product(p):
+        brand = p.get('brand', '').strip()
+        if not brand:
+            return True
+        return brand_counts.get(brand, 0) < max_per_brand
+
+    result = []
+    seen_ids = set()
+
+    # Шаг 1: если указаны бренды, добавляем лучший продукт каждого из них
     if brands_requested:
         best_per_brand = {}
         for p in ranked_products:
@@ -46,44 +71,42 @@ def get_diverse_top_products(ranked_products: list, brands_requested: list = Non
                         best_per_brand[brand_key] = p
                     break
 
-        forced = list(best_per_brand.values())
-        forced.sort(key=lambda x: x.get('score', 0), reverse=True)
+        forced = sorted(best_per_brand.values(), key=lambda x: x.get('score', 0), reverse=True)
+        for p in forced:
+            brand = p.get('brand', '').strip()
+            result.append(p)
+            seen_ids.add(p.get('id'))
+            brand_counts[brand] = brand_counts.get(brand, 0) + 1
 
-        diverse = forced[:]
-        seen_ids = {p.get('id') for p in forced if p.get('id') is not None}
-
-        for p in ranked_products:
-            if p.get('id') not in seen_ids:
-                diverse.append(p)
-                seen_ids.add(p.get('id'))
-                if len(diverse) >= num_results:
-                    break
-        diverse.sort(key=lambda x: x.get('score', 0), reverse=True)
-        return diverse[:num_results]
-
-    # No specific brands requested: take top product from each brand
-    best_per_brand_all = {}
+    # Шаг 2: добавляем оставшиеся продукты с учётом max_per_brand
     for p in ranked_products:
-        brand = p.get('brand', '').strip()
-        if not brand:
+        if len(result) >= num_results:
+            break
+        if p.get('id') in seen_ids:
             continue
-        if brand not in best_per_brand_all or p.get('score', 0) > best_per_brand_all[brand].get('score', 0):
-            best_per_brand_all[brand] = p
+        if not can_add_product(p):
+            continue
+        result.append(p)
+        seen_ids.add(p.get('id'))
+        brand = p.get('brand', '').strip()
+        if brand:
+            brand_counts[brand] = brand_counts.get(brand, 0) + 1
 
-    brand_top = sorted(best_per_brand_all.values(), key=lambda x: x.get('score', 0), reverse=True)
-    diverse = brand_top[:num_results]
-
-    if len(diverse) < num_results:
-        seen_ids = {p.get('id') for p in diverse if p.get('id') is not None}
+    # Если всё ещё не хватает до num_results, добавляем продукты с игнорированием лимита
+    if len(result) < num_results:
         for p in ranked_products:
-            if p.get('id') not in seen_ids:
-                diverse.append(p)
-                seen_ids.add(p.get('id'))
-                if len(diverse) >= num_results:
-                    break
+            if len(result) >= num_results:
+                break
+            if p.get('id') in seen_ids:
+                continue
+            result.append(p)
+            seen_ids.add(p.get('id'))
+            brand = p.get('brand', '').strip()
+            if brand:
+                brand_counts[brand] = brand_counts.get(brand, 0) + 1
 
-    diverse.sort(key=lambda x: x.get('score', 0), reverse=True)
-    return diverse[:num_results]
+    result.sort(key=lambda x: x.get('score', 0), reverse=True)
+    return result[:num_results]
 
 
 def _clean_numeric_value(feature_key: str, value: float) -> float:
@@ -98,9 +121,6 @@ def _clean_numeric_value(feature_key: str, value: float) -> float:
 
 
 def _build_explanation_prompt(products: list, user_query: str, use_case: str = None) -> str:
-    """
-    Builds a flexible prompt for the LLM based on the actual products and the user's query.
-    """
     product_lines = []
     for idx, p in enumerate(products[:5], 1):
         line = f"{idx}. {p['brand']} {p['name']} (Score: {p.get('score', 0):.2f})"
@@ -131,7 +151,6 @@ def _build_explanation_prompt(products: list, user_query: str, use_case: str = N
     if "camera" in user_query.lower() or "photo" in user_query.lower():
         camera_mention = "The user specifically cares about camera quality. Please comment on camera specs if available."
 
-    # Определяем все бренды в списке для инструкции
     brands_in_list = sorted(set(p['brand'] for p in products[:5] if p.get('brand')))
     brands_note = f"IMPORTANT: The product list includes these brands: {', '.join(brands_in_list)}. Do NOT say any brand is missing unless it is truly absent from this list."
 
@@ -146,29 +165,30 @@ Based on the search results, here are the top recommended products:
 
 Please provide a short, helpful explanation (1-2 paragraphs) that:
 - Directly answers the user's question.
-- Highlights the #1 recommended product and why it stands out.
-- If multiple brands are present among the top 3, explicitly compare at least two different brands.
-- Mention the most relevant specifications (e.g., battery, camera, display, performance) that support the recommendation.
-- **CRITICAL: You MUST mention ALL brands that appear in the product list above, even if they have lower scores.** Do not say a brand is missing if it is present.
-- Do NOT assume any use case (like gaming, camera, battery) unless the user explicitly mentioned it or the use_case field is provided above.
-- Do NOT make up products that are not in the list.
-- Be objective and use the scores and specs as guidance.
-- Write in the same language as the user query.
-
-Keep the tone professional and concise.
+- Highlights the #1 recommended product and EXPLAINS WHY it stands out. **YOU MUST MENTION AT LEAST 2-3 KEY SPECIFICATIONS (e.g., battery capacity, camera MP, display size/refresh rate, processor) for the top product, using the actual numbers from the "Key specs" lines.**
+- Compare the top product with at least one runner-up, mentioning a specific advantage or disadvantage.
+- Mention the most relevant specifications that support the recommendation.
+- Do NOT use vague phrases like "well-rounded specifications" or "good balance". Be specific.
+- Keep the tone professional and concise.
 """
     return prompt
 
 
-def generate_explanations(products_for_explanation, all_ranked_products, query: str, brands_requested=None, models_requested=None) -> str:
+def generate_explanations(products_for_explanation, all_ranked_products, query: str,
+                         brands_requested=None, models_requested=None) -> str:
     """
     Generates a natural language explanation for the recommended products.
     """
     if not products_for_explanation and not all_ranked_products:
         return "No products matched your exact criteria. Try adjusting your filters or budget."
 
+    # Используем max_per_brand=2 для разнообразия, но разрешаем до двух устройств одного бренда
     products_for_explanation = get_diverse_top_products(
-        all_ranked_products, brands_requested, models_requested, num_results=6
+        all_ranked_products,
+        brands_requested,
+        models_requested,
+        num_results=6,
+        max_per_brand=2
     )
 
     use_case = None

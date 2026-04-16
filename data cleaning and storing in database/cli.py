@@ -133,7 +133,13 @@ def ai_search_flow():
                 ranked_products = rank_products(top_ids, structured_query.use_case)
                 
                 print("[AI] Applying brand diversity...")
-                top_results = get_diverse_top_products(ranked_products, structured_query.brands, num_results=5)
+                top_results = get_diverse_top_products(
+                    ranked_products, 
+                    structured_query.brands, 
+                    structured_query.models,
+                    num_results=5,
+                    max_per_brand=2
+                )
                 
                 print("\n[AI] Generating final recommendations...")
                 explanation = generate_explanations(
