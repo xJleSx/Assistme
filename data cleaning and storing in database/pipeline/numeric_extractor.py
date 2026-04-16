@@ -10,7 +10,6 @@ from config.currency_config import get_currency_from_text
 
 logger = logging.getLogger(__name__)
 
-# Extraction rules
 EXTRACTION_RULES = [
     # Battery capacity
     {
@@ -110,15 +109,17 @@ EXTRACTION_RULES = [
         "pattern": r"(\d+(?:\.\d+)?)\s*(?:EUR|USD|INR|£|€|$|₹)",
         "group": 1,
     },
+    # Aperture (f-number)
+    {
+        "columns": ["MAIN_CAMERA_Single", "MAIN_CAMERA_Dual", "MAIN_CAMERA_Triple", "MAIN_CAMERA_Quad", "MAIN_CAMERA_Features"],
+        "spec_key": "aperture",
+        "pattern": r"f/(\d+\.?\d*)",
+        "group": 1,
+    },
 ]
 
 
 def extract_numeric_specs(session, product_id: int, row_data: dict) -> int:
-    """
-    Extract numeric values from a product's raw spec data and store in product_features.
-    Also updates Product.price and price_currency fields.
-    Returns number of features inserted.
-    """
     values_to_insert = []
     seen_keys = set()
     
@@ -140,7 +141,6 @@ def extract_numeric_specs(session, product_id: int, row_data: dict) -> int:
                 try:
                     numeric_val = float(match.group(rule["group"]))
                     
-                    # Сохраняем в product_features
                     values_to_insert.append({
                         "product_id": product_id,
                         "feature_key": rule["spec_key"],
@@ -149,7 +149,6 @@ def extract_numeric_specs(session, product_id: int, row_data: dict) -> int:
                     })
                     seen_keys.add(rule["spec_key"])
                     
-                    # Обновляем поля цены и валюты в таблице products
                     if rule["spec_key"] == "price":
                         product = session.query(Product).get(product_id)
                         if product:

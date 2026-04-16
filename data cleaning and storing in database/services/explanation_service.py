@@ -12,12 +12,12 @@ def get_diverse_top_products(
     brands_requested: list = None,
     models_requested: list = None,
     num_results: int = 5,
-    max_per_brand: int = 2               # <-- новый параметр
+    max_per_brand: int = 2
 ) -> list:
     """
     Формирует разнообразный список топ-продуктов.
 
-    - Если указаны конкретные модели, возвращаются только они (без ограничений).
+    - Если указаны конкретные модели, возвращаются ТОЛЬКО они (без добавления других).
     - Если указаны бренды, сначала включаются лучшие продукты каждого запрошенного бренда,
       затем остальные продукты с учётом max_per_brand.
     - Иначе выбираются лучшие продукты разных брендов, затем оставшиеся с учётом max_per_brand.
@@ -32,7 +32,7 @@ def get_diverse_top_products(
     if not ranked_products:
         return []
 
-    # Если запрошены конкретные модели, возвращаем только их без диверсификации
+    # СТРОГИЙ ПРИОРИТЕТ ЗАПРОШЕННЫХ МОДЕЛЕЙ
     if models_requested:
         model_matches = []
         for p in ranked_products:
@@ -42,8 +42,16 @@ def get_diverse_top_products(
                     model_matches.append(p)
                     break
         if model_matches:
-            model_matches.sort(key=lambda x: x.get('score', 0), reverse=True)
-            return model_matches[:num_results]
+            # Убираем дубликаты (один продукт мог совпасть по разным ключевым словам)
+            seen = set()
+            unique_matches = []
+            for p in model_matches:
+                if p.get('id') not in seen:
+                    seen.add(p.get('id'))
+                    unique_matches.append(p)
+            unique_matches.sort(key=lambda x: x.get('score', 0), reverse=True)
+            # Возвращаем ТОЛЬКО запрошенные модели, без добавления других
+            return unique_matches
 
     # Счётчики брендов для ограничения max_per_brand
     brand_counts = {}
@@ -121,6 +129,9 @@ def _clean_numeric_value(feature_key: str, value: float) -> float:
 
 
 def _build_explanation_prompt(products: list, user_query: str, use_case: str = None) -> str:
+    """
+    Builds a flexible prompt for the LLM based on the actual products and the user's query.
+    """
     product_lines = []
     for idx, p in enumerate(products[:5], 1):
         line = f"{idx}. {p['brand']} {p['name']} (Score: {p.get('score', 0):.2f})"
@@ -182,7 +193,6 @@ def generate_explanations(products_for_explanation, all_ranked_products, query: 
     if not products_for_explanation and not all_ranked_products:
         return "No products matched your exact criteria. Try adjusting your filters or budget."
 
-    # Используем max_per_brand=2 для разнообразия, но разрешаем до двух устройств одного бренда
     products_for_explanation = get_diverse_top_products(
         all_ranked_products,
         brands_requested,

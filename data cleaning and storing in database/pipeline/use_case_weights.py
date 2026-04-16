@@ -7,7 +7,6 @@ from database.models import UseCaseWeight
 
 logger = logging.getLogger(__name__)
 
-# Очищенные профили — только фичи, которые реально извлекаются как numeric
 USE_CASE_PROFILES = {
     "gaming": {
         "refresh_rate": 0.25,
@@ -18,14 +17,16 @@ USE_CASE_PROFILES = {
         "cpu_generation": 0.10,
     },
     "camera": {
-        "camera_mp": 0.22,          # снижено
-        "selfie_camera_mp": 0.12,
-        "display_size": 0.15,       # увеличено — важно для кадрирования
-        "refresh_rate": 0.12,       # увеличено — плавный видоискатель
-        "battery_capacity": 0.10,
-        "charging_watts": 0.10,
-        "storage": 0.10,
-        "weight": 0.09,
+        "camera_mp": 0.10,           # сильно снижено – мегапиксели не главное
+        "has_ois": 0.25,             # оптическая стабилизация критична
+        "selfie_camera_mp": 0.10,
+        "display_size": 0.10,
+        "refresh_rate": 0.05,
+        "battery_capacity": 0.05,
+        "charging_watts": 0.05,
+        "storage": 0.05,
+        "cpu_generation": 0.15,      # процессор важен для обработки фото
+        "weight": 0.10,              # лёгкий телефон удобнее держать при съёмке
     },
     "battery_life": {
         "battery_capacity": 0.45,
@@ -63,7 +64,6 @@ def insert_use_case_weights(session) -> int:
             })
     if values_to_insert:
         stmt = pg_insert(UseCaseWeight).values(values_to_insert)
-        # ← КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: теперь обновляет веса, если они изменились
         stmt = stmt.on_conflict_do_update(
             index_elements=["use_case", "feature_key"],
             set_={"weight": stmt.excluded.weight}

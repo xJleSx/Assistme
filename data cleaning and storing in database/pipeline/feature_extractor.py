@@ -8,8 +8,6 @@ from database.models import ProductFeature
 
 logger = logging.getLogger(__name__)
 
-# Feature mapping rules
-# Each rule defines: source columns, feature_key, extraction type, and regex
 FEATURE_RULES = [
     # --- Numeric features ---
     {
@@ -72,12 +70,51 @@ FEATURE_RULES = [
         "type": "numeric",
         "pattern": r"Gen\s*(\d+)",
     },
+    # --- Binary features (улучшены) ---
+    {
+        "columns": ["MAIN_CAMERA_Features", "MAIN_CAMERA_Single", "MAIN_CAMERA_Dual", "MAIN_CAMERA_Triple", "MAIN_CAMERA_Quad"],
+        "feature_key": "has_ois",
+        "type": "binary",
+        "pattern": r"OIS|optical image stabilization",
+    },
+    {
+        "columns": ["MAIN_CAMERA_Dual", "MAIN_CAMERA_Triple", "MAIN_CAMERA_Quad", "MAIN_CAMERA_Features"],
+        "feature_key": "has_telephoto",
+        "type": "binary",
+        "pattern": r"telephoto|tele\b",
+    },
+    {
+        "columns": ["MAIN_CAMERA_Dual", "MAIN_CAMERA_Triple", "MAIN_CAMERA_Quad", "MAIN_CAMERA_Features"],
+        "feature_key": "has_ultrawide",
+        "type": "binary",
+        "pattern": r"ultrawide|ultra wide|ultra-wide",
+    },
+    {
+        "columns": ["MAIN_CAMERA_Features"],
+        "feature_key": "has_lidar",
+        "type": "binary",
+        "pattern": r"LiDAR",
+    },
+    # --- Aperture (извлекаем минимальное f-число из всех камер) ---
+    {
+        "columns": ["MAIN_CAMERA_Single", "MAIN_CAMERA_Dual", "MAIN_CAMERA_Triple", "MAIN_CAMERA_Quad", "MAIN_CAMERA_Features"],
+        "feature_key": "aperture",
+        "type": "numeric_min",
+        "pattern": r"f/(\d+\.?\d*)",
+    },
+    # --- Sensor size (например, 1/1.28") ---
+    {
+        "columns": ["MAIN_CAMERA_Single", "MAIN_CAMERA_Dual", "MAIN_CAMERA_Triple", "MAIN_CAMERA_Quad", "MAIN_CAMERA_Features"],
+        "feature_key": "sensor_size",
+        "type": "text",
+        "pattern": r'(\d+/\d+\.?\d*)"',
+    },
     # --- Text features ---
     {
         "columns": ["DISPLAY_Type"],
         "feature_key": "display_type",
         "type": "text",
-        "pattern": None,  # Take full value
+        "pattern": None,
     },
     {
         "columns": ["PLATFORM_CPU"],
@@ -143,12 +180,6 @@ FEATURE_RULES = [
 
 
 def extract_features(session, product_id: int, row_data: dict) -> int:
-    """
-    Extract normalized features from a product's raw spec data.
-    
-    Returns:
-        Number of features inserted
-    """
     values_to_insert = []
     seen_keys = set()
     
@@ -182,15 +213,55 @@ def extract_features(session, product_id: int, row_data: dict) -> int:
                     except (ValueError, IndexError):
                         continue
             
+            elif rule["type"] == "numeric_min" and rule["pattern"]:
+                # Ищем все f-числа и берём минимальное
+                matches = re.findall(rule["pattern"], text, re.IGNORECASE)
+                if matches:
+                    try:
+                        min_val = min(float(m) for m in matches)
+                        values_to_insert.append({
+                            "product_id": product_id,
+                            "feature_key": rule["feature_key"],
+                            "feature_value_numeric": min_val,
+                            "feature_value_text": None,
+                        })
+                        seen_keys.add(rule["feature_key"])
+                        break
+                    except (ValueError, IndexError):
+                        continue
+            
+            elif rule["type"] == "binary" and rule["pattern"]:
+                if re.search(rule["pattern"], text, re.IGNORECASE):
+                    values_to_insert.append({
+                        "product_id": product_id,
+                        "feature_key": rule["feature_key"],
+                        "feature_value_numeric": 1.0,
+                        "feature_value_text": None,
+                    })
+                    seen_keys.add(rule["feature_key"])
+                    break
+            
             elif rule["type"] == "text":
-                values_to_insert.append({
-                    "product_id": product_id,
-                    "feature_key": rule["feature_key"],
-                    "feature_value_numeric": None,
-                    "feature_value_text": text,
-                })
-                seen_keys.add(rule["feature_key"])
-                break
+                if rule["pattern"]:
+                    match = re.search(rule["pattern"], text, re.IGNORECASE)
+                    if match:
+                        values_to_insert.append({
+                            "product_id": product_id,
+                            "feature_key": rule["feature_key"],
+                            "feature_value_numeric": None,
+                            "feature_value_text": match.group(1),
+                        })
+                        seen_keys.add(rule["feature_key"])
+                        break
+                else:
+                    values_to_insert.append({
+                        "product_id": product_id,
+                        "feature_key": rule["feature_key"],
+                        "feature_value_numeric": None,
+                        "feature_value_text": text,
+                    })
+                    seen_keys.add(rule["feature_key"])
+                    break
     
     if values_to_insert:
         stmt = pg_insert(ProductFeature).values(values_to_insert)
