@@ -1,0 +1,227 @@
+# Assistme
+
+## 📌 About the Project
+
+**Assistme** is a Python-based application for processing, analyzing, and searching product data (smartphones) from Excel sources.
+
+The project implements a full data pipeline:
+
+1. Load and clean data from Excel files
+2. Extract and structure product specifications
+3. Store processed data in a PostgreSQL database
+4. Provide search, comparison, and AI-powered querying via CLI and API
+
+---
+
+## 🧠 Core Features
+
+### 📥 Data Pipeline
+
+* Excel data loading (`pipeline/excel_loader.py`)
+* Parsing and structuring (`section_parser.py`, `feature_extractor.py`)
+* Numeric value extraction (`numeric_extractor.py`)
+* Database insertion (`spec_inserter.py`)
+
+---
+
+### 🗄️ Database Layer
+
+* PostgreSQL schema (`database/schema.sql`)
+* Data models (`database/models.py`)
+* Database reset utility (`reset_db.py`)
+
+---
+
+### 🔍 CLI Interface (`cli.py`)
+
+Interactive terminal interface:
+
+```text
+1. View single product details
+2. Compare multiple products
+3. AI Natural Language Search
+4. Exit
+```
+
+Capabilities:
+
+* View detailed product specifications
+* Compare multiple devices
+* Perform natural language search using AI
+
+---
+
+### 🤖 AI Features
+
+* Natural language query interpretation (`ai_query_interpreter.py`)
+* Explanation generation (`explanation_service.py`)
+* Result ranking (`ranking_engine.py`)
+
+Technologies used:
+
+* OpenAI API
+* Redis (caching)
+* Pydantic (data validation)
+
+---
+
+### 🌐 API (In Progress)
+
+* FastAPI application (`api_main.py`)
+* Search endpoints (`api/search_routes.py`)
+
+---
+
+## 🏗️ Project Structure
+
+```text
+data cleaning and storing in database/
+│
+├── api/                # FastAPI endpoints
+├── config/             # Configuration (DB, AI, currency)
+├── database/           # Models and SQL schema
+├── pipeline/           # Data processing pipeline
+├── schemas/            # Pydantic schemas
+├── services/           # Business logic & AI services
+├── logs/               # Logs
+│
+├── main.py             # Data pipeline entry point
+├── cli.py              # CLI interface
+├── api_main.py         # API entry point
+├── reset_db.py         # Reset database
+└── requirements_ai.txt # Dependencies
+```
+
+---
+
+## 🚀 Getting Started
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/xJleSx/Assistme.git
+cd "data cleaning and storing in database"
+```
+
+---
+
+### 2. Install dependencies
+
+```bash
+pip install -r requirements_ai.txt
+```
+
+Dependencies include:
+
+* fastapi
+* uvicorn
+* openai
+* redis
+* pydantic
+* requests
+
+---
+
+### 3. Configure the database
+
+Edit:
+
+```
+config/db_config.py
+```
+
+Set your PostgreSQL credentials:
+
+* host
+* port
+* user
+* password
+* database
+
+---
+
+### 4. Run data pipeline
+
+```bash
+python main.py
+```
+
+This will:
+
+* Load Excel datasets (Apple, Samsung, Xiaomi, Oppo)
+* Clean and normalize data
+* Store results in PostgreSQL
+
+---
+
+### 5. Run CLI
+
+```bash
+python cli.py
+```
+
+---
+
+### 6. (Optional) Run API
+
+```bash
+uvicorn api_main:app --reload
+```
+
+---
+
+## 📊 Data Sources
+
+The project includes Excel datasets with smartphone specifications:
+
+* Apple
+* Samsung
+* Xiaomi
+* Oppo
+
+Covering multiple years (2000–2026)
+
+---
+
+## 🧪 Testing
+
+```bash
+python test_services.py
+```
+
+---
+
+## ⚠️ Notes
+
+* Project directory contains spaces (may cause issues in some environments)
+* PostgreSQL is required
+* AI features require an OpenAI API key
+* Redis is used for caching
+
+---
+
+## 🧩 Roadmap
+
+* [ ] Improve API layer
+* [ ] Add web interface
+* [ ] Enhance AI search capabilities
+* [ ] Optimize data pipeline
+* [ ] Add Docker support
+* [ ] Refactor project structure (remove spaces in paths)
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome:
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Open a Pull Request
+
+---
+
+## 📬 Feedback
+
+Feel free to open an issue or submit a pull request if you have suggestions or find bugs.
